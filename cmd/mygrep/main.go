@@ -56,7 +56,11 @@ func matchLine(line []byte, pattern string) (bool, error) {
 
 	switch {
 	case pattern == "\\d": fun = isDigit; break;
-	case isLetter(rune(pattern[0])): fun = isLetter; break;
+	case isLetter(rune(pattern[0])):
+		fun = func (r rune) bool {
+			return r == rune(pattern[0])
+		}
+		break
 	default: fun = nil; break;
 	}
 
