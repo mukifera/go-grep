@@ -50,6 +50,7 @@ func matchLine(line []byte, pattern string) (bool, error) {
 				switch {
 					case parser.Matches('d'): funcs = append(funcs, Matchers.Digit); break;
 					case parser.Matches('w'): funcs = append(funcs, Matchers.Alpha); break;
+					case parser.Matches('\\'): funcs = append(funcs, Matchers.Literal('\\')); break;
 					default:
 						return false, unsupported_err
 				}
