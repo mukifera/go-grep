@@ -52,20 +52,32 @@ func isAlpha(r rune) bool {
 	return isDigit(r) || isLetter(r) || r == '_'
 }
 
-func buildPositiveGroup(str string) (RuneMatcherFunc, error) {
+func buildCharacterGroup(str string) (RuneMatcherFunc, error) {
 	err := fmt.Errorf("unsupported pattern: %q", str)
 	if len(str) < 2 { return nil, err; }
 	if str[0] != '[' || str[len(str)-1] != ']' { return nil, err; }
-	chars := map[rune]bool{}
-	for _, c := range(str[1:len(str)-1]) {
-		r := rune(c)
-		chars[r] = true
-	}
-	fun := func (r rune) bool {
-		_, ok := chars[r]
-		return ok
-	}
 
+	var fun RuneMatcherFunc
+	chars := map[rune]bool{}
+	if len(str) > 2 && str[1] == '^' {
+		for _, c := range(str[2:len(str)-1]) {
+			r := rune(c)
+			chars[r] = true
+		}
+		fun = func (r rune) bool {
+			_, ok := chars[r]
+			return !ok
+		}
+	} else {
+		for _, c := range(str[1:len(str)-1]) {
+			r := rune(c)
+			chars[r] = true
+		}
+		fun = func (r rune) bool {
+			_, ok := chars[r]
+			return ok
+		}
+	}
 	return fun, nil
 }
 
@@ -81,7 +93,7 @@ func matchLine(line []byte, pattern string) (bool, error) {
 	case pattern == "\\d": fun = isDigit; break;
 	case pattern == "\\w": fun = isAlpha; break;
 	case pattern[0] == '[':
-		f, err := buildPositiveGroup(pattern)
+		f, err := buildCharacterGroup(pattern)
 		if err != nil {
 			return false, err
 		}
