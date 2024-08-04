@@ -36,6 +36,8 @@ func main() {
 	// default exit code is 0 which means success
 }
 
+type RuneMatcherFunc func (rune) bool
+
 func isLetter(r rune) bool {
 	if 'a' <= r && r <= 'z' { return true; }
 	if 'A' <= r && r <= 'Z' { return true; }
@@ -50,23 +52,48 @@ func isAlpha(r rune) bool {
 	return isDigit(r) || isLetter(r) || r == '_'
 }
 
+func buildPositiveGroup(str string) (RuneMatcherFunc, error) {
+	err := fmt.Errorf("unsupported pattern: %q", str)
+	if len(str) < 2 { return nil, err; }
+	if str[0] != '[' || str[len(str)-1] != ']' { return nil, err; }
+	chars := map[rune]bool{}
+	for _, c := range(str[1:len(str)-1]) {
+		r := rune(c)
+		chars[r] = true
+	}
+	fun := func (r rune) bool {
+		_, ok := chars[r]
+		return ok
+	}
+
+	return fun, nil
+}
+
 func matchLine(line []byte, pattern string) (bool, error) {
-	if utf8.RuneCountInString(pattern) > 2 {
+	if utf8.RuneCountInString(pattern) == 0 {
 		return false, fmt.Errorf("unsupported pattern: %q", pattern)
 	}
 
 	var ok bool
-	var fun func (rune) bool
+	var fun RuneMatcherFunc
 
 	switch {
 	case pattern == "\\d": fun = isDigit; break;
 	case pattern == "\\w": fun = isAlpha; break;
+	case pattern[0] == '[':
+		f, err := buildPositiveGroup(pattern)
+		if err != nil {
+			return false, err
+		}
+		fun = f
+		break
 	case isLetter(rune(pattern[0])):
 		fun = func (r rune) bool {
 			return r == rune(pattern[0])
 		}
 		break
-	default: fun = nil; break;
+	default:
+		return false, fmt.Errorf("unsupported pattern: %q", pattern)
 	}
 
 	ok = bytes.ContainsFunc(line, fun)
