@@ -36,14 +36,18 @@ func main() {
 	// default exit code is 0 which means success
 }
 
-func isLetter(char rune) bool {
-	if 'a' <= char && char <= 'z' { return true; }
-	if 'A' <= char && char <= 'Z' { return true; }
+func isLetter(r rune) bool {
+	if 'a' <= r && r <= 'z' { return true; }
+	if 'A' <= r && r <= 'Z' { return true; }
 	return false
 }
 
-func isDigit(char rune) bool {
-	return '0' <= char && char <= '9'
+func isDigit(r rune) bool {
+	return '0' <= r && r <= '9'
+}
+
+func isAlpha(r rune) bool {
+	return isDigit(r) || isLetter(r) || r == '_'
 }
 
 func matchLine(line []byte, pattern string) (bool, error) {
@@ -56,6 +60,7 @@ func matchLine(line []byte, pattern string) (bool, error) {
 
 	switch {
 	case pattern == "\\d": fun = isDigit; break;
+	case pattern == "\\w": fun = isAlpha; break;
 	case isLetter(rune(pattern[0])):
 		fun = func (r rune) bool {
 			return r == rune(pattern[0])
