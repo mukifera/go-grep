@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
-	"unicode/utf8"
 )
 
 // Usage: echo <input_text> | your_program.sh -E <pattern>
@@ -38,77 +36,56 @@ func main() {
 
 type RuneMatcherFunc func (rune) bool
 
-func isLetter(r rune) bool {
-	if 'a' <= r && r <= 'z' { return true; }
-	if 'A' <= r && r <= 'Z' { return true; }
-	return false
-}
-
-func isDigit(r rune) bool {
-	return '0' <= r && r <= '9'
-}
-
-func isAlpha(r rune) bool {
-	return isDigit(r) || isLetter(r) || r == '_'
-}
-
-func buildCharacterGroup(str string) (RuneMatcherFunc, error) {
-	err := fmt.Errorf("unsupported pattern: %q", str)
-	if len(str) < 2 { return nil, err; }
-	if str[0] != '[' || str[len(str)-1] != ']' { return nil, err; }
-
-	var fun RuneMatcherFunc
-	chars := map[rune]bool{}
-	if len(str) > 2 && str[1] == '^' {
-		for _, c := range(str[2:len(str)-1]) {
-			r := rune(c)
-			chars[r] = true
-		}
-		fun = func (r rune) bool {
-			_, ok := chars[r]
-			return !ok
-		}
-	} else {
-		for _, c := range(str[1:len(str)-1]) {
-			r := rune(c)
-			chars[r] = true
-		}
-		fun = func (r rune) bool {
-			_, ok := chars[r]
-			return ok
-		}
-	}
-	return fun, nil
-}
-
 func matchLine(line []byte, pattern string) (bool, error) {
-	if utf8.RuneCountInString(pattern) == 0 {
-		return false, fmt.Errorf("unsupported pattern: %q", pattern)
+
+	unsupported_err := fmt.Errorf("unsupported pattern: %q", pattern)
+	
+	parser := NewParser(pattern)
+	
+	var funcs []RuneMatcherFunc
+	for ; !parser.AtEnd(); {
+		current_rune := parser.Advance()
+		switch current_rune {
+			case '\\':
+				switch {
+					case parser.Matches('d'): funcs = append(funcs, Matchers.Digit); break;
+					case parser.Matches('w'): funcs = append(funcs, Matchers.Alpha); break;
+					default:
+						return false, unsupported_err
+				}
+				break
+			case '[':
+				matcher, err := Matchers.CharacterGroup(&parser)
+				if err != nil {
+					return false, err
+				}
+				funcs = append(funcs, matcher)
+				break
+			default:
+				funcs = append(funcs, Matchers.Literal(current_rune))
+				break
+		}
 	}
 
-	var ok bool
-	var fun RuneMatcherFunc
+	runes := []rune(string(line))
+	funcs_count := len(funcs)
 
-	switch {
-	case pattern == "\\d": fun = isDigit; break;
-	case pattern == "\\w": fun = isAlpha; break;
-	case pattern[0] == '[':
-		f, err := buildCharacterGroup(pattern)
-		if err != nil {
-			return false, err
+	for i := 0; i + funcs_count <= len(runes); i++ {
+		ok := true
+		for j := 0; j < funcs_count; j++ {
+			if runes[i+j] == '\n' || runes[i+j] == 0 {
+				ok = false
+				break
+			}
+			if !funcs[j](runes[i+j]) {
+				ok = false
+				break
+			}
 		}
-		fun = f
-		break
-	case isLetter(rune(pattern[0])):
-		fun = func (r rune) bool {
-			return r == rune(pattern[0])
+		if ok {
+			return true, nil
 		}
-		break
-	default:
-		return false, fmt.Errorf("unsupported pattern: %q", pattern)
 	}
 
-	ok = bytes.ContainsFunc(line, fun)
-
-	return ok, nil
+	return false, nil
 }
