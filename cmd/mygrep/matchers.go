@@ -5,6 +5,47 @@ import "errors"
 type RuneMatcherFunc func (*Parser) (bool, int)
 type matchersT struct{}
 
+type MatcherState struct {
+	rune_index int
+	matcher_node *MatcherNode
+}
+
+func NewMatcherState(rune_index int, matcher_node *MatcherNode) MatcherState {
+	return MatcherState{
+		rune_index: rune_index,
+		matcher_node: matcher_node,
+	}
+}
+
+type MatcherNode struct {
+	matcher_func RuneMatcherFunc
+	next []*MatcherNode
+}
+
+type MatcherList struct {
+	head *MatcherNode
+	tail *MatcherNode
+}
+
+func NewMatcherList() MatcherList {
+	var list MatcherList
+	list.head = nil
+	list.tail = nil
+	return list
+}
+
+func (list *MatcherList) AddNode(f RuneMatcherFunc) {
+	var node MatcherNode
+	node.matcher_func = f
+	if list.tail != nil {
+		list.tail.next = append(list.tail.next, &node)
+	}
+	list.tail = &node
+	if list.head == nil {
+		list.head = list.tail
+	}
+}
+
 var Matchers matchersT
 
 func (matchersT) Letter(p *Parser) (bool, int) {

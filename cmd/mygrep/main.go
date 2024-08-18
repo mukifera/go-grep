@@ -40,17 +40,19 @@ func matchLine(line []byte, pattern string) (bool, error) {
 	
 	parser := NewParser(pattern)
 	
-	var funcs []RuneMatcherFunc
+	matcher_list := NewMatcherList()
+
 	for ; !parser.AtEnd(); {
 		current_rune := parser.Advance()
 		switch current_rune {
-			case '^': funcs = append(funcs, Matchers.StartOfString); break;
-			case '$': funcs = append(funcs, Matchers.EndOfString); break;
+			case '^': matcher_list.AddNode(Matchers.StartOfString); break;
+			case '$': matcher_list.AddNode(Matchers.EndOfString); break;
+			case '+': matcher_list.tail.next = append(matcher_list.tail.next, matcher_list.tail)
 			case '\\':
 				switch {
-					case parser.Matches('d'): funcs = append(funcs, Matchers.Digit); break;
-					case parser.Matches('w'): funcs = append(funcs, Matchers.Alpha); break;
-					case parser.Matches('\\'): funcs = append(funcs, Matchers.Literal('\\')); break;
+					case parser.Matches('d'): matcher_list.AddNode(Matchers.Digit); break;
+					case parser.Matches('w'): matcher_list.AddNode(Matchers.Alpha); break;
+					case parser.Matches('\\'): matcher_list.AddNode(Matchers.Literal('\\')); break;
 					default:
 						return false, unsupported_err
 				}
@@ -60,29 +62,41 @@ func matchLine(line []byte, pattern string) (bool, error) {
 				if err != nil {
 					return false, err
 				}
-				funcs = append(funcs, matcher)
+				matcher_list.AddNode(matcher)
 				break
 			default:
-				funcs = append(funcs, Matchers.Literal(current_rune))
+				matcher_list.AddNode(Matchers.Literal(current_rune))
 				break
 		}
 	}
 
 	parser = NewParser(string(line))
-	funcs_count := len(funcs)
-
+	
 	for i := 0; i <= len(parser.contents); i++ {
-		ok := true
-		parser.current = i
-		var j int
-		for j = 0; j < funcs_count; j++ {
-			ok, n := funcs[j](&parser)
-			if !ok {
+		matched := false
+		var states []MatcherState
+		states = append(states, NewMatcherState(i, matcher_list.head))
+		for ; len(states) != 0;{
+			var new_states []MatcherState
+			for _, state := range(states) {
+				parser.current = state.rune_index
+				ok, n := state.matcher_node.matcher_func(&parser)
+				if ok {
+					if len(state.matcher_node.next) == 0 {
+						matched = true
+						break
+					}
+					for _, next := range(state.matcher_node.next) {
+						new_states = append(new_states, NewMatcherState(state.rune_index + n, next))
+					}
+				}
+			}
+			if matched {
 				break
 			}
-			parser.current += n
+			states = new_states
 		}
-		if ok && j == funcs_count {
+		if matched {
 			return true, nil
 		}
 	}
