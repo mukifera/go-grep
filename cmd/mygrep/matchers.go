@@ -8,6 +8,7 @@ type matchersT struct{}
 var Matchers matchersT
 
 func (matchersT) Letter(p *Parser) (bool, int) {
+	if p.AtEnd() { return false, 1 }
 	r := p.Peek()
 	if 'a' <= r && r <= 'z' { return true, 1; }
 	if 'A' <= r && r <= 'Z' { return true, 1; }
@@ -15,6 +16,7 @@ func (matchersT) Letter(p *Parser) (bool, int) {
 }
 
 func (matchersT) Digit(p *Parser) (bool, int) {
+	if p.AtEnd() { return false, 1 }
 	r := p.Peek()
 	return '0' <= r && r <= '9', 1
 }
@@ -22,11 +24,13 @@ func (matchersT) Digit(p *Parser) (bool, int) {
 func (matchersT) Alpha(p *Parser) (bool, int) {
 	if ok, n := Matchers.Digit(p); ok { return ok, n; }
 	if ok, n := Matchers.Letter(p); ok { return ok, n; }
+	if p.AtEnd() { return false, 1 }
 	return p.Peek() == '_', 1
 }
 
 func (matchersT) Literal(r rune) RuneMatcherFunc {
 	return func (p *Parser) (bool, int) {
+		if p.AtEnd() { return false, 1 }
 		return r == p.Peek(), 1
 	}
 }
