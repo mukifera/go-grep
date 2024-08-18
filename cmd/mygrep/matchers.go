@@ -52,6 +52,7 @@ func (matchersT) CharacterGroup(parser *Parser) (RuneMatcherFunc, error) {
 	}
 
 	matcher := func (p *Parser) (bool, int) {
+		if p.AtEnd() { return false, 1; }
 		for i := 0; i < len(class_funcs); i++ {
 			if ok, n := class_funcs[i](p); ok { return positive, n; }
 		}
