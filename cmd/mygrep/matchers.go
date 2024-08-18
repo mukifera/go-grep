@@ -155,6 +155,13 @@ func (matcher *Matcher) ZeroOrOne() {
 	matcher.list.AppendNode(&node)
 }
 
+func (matcher *Matcher) WildCard() {
+	f := func (p *Parser) (bool, int) {
+		return !p.AtEnd() && p.Peek() != '\n', 1
+	}
+	matcher.AppendMatcher(f)
+}
+
 func isLetter(r rune) bool {
 	if 'a' <= r && r <= 'z' { return true; }
 	if 'A' <= r && r <= 'Z' { return true; }

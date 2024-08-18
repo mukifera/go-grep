@@ -48,6 +48,7 @@ func matchLine(line []byte, pattern string) (bool, error) {
 			case '$': matcher.EndAnchor(); break;
 			case '+': matcher.OneOrMore(); break;
 			case '?': matcher.ZeroOrOne(); break;
+			case '.': matcher.WildCard(); break;
 			case '\\':
 				switch {
 					case parser.Matches('d'): matcher.Digit(); break;
