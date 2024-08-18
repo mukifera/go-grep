@@ -34,8 +34,6 @@ func main() {
 	// default exit code is 0 which means success
 }
 
-type RuneMatcherFunc func (rune) bool
-
 func matchLine(line []byte, pattern string) (bool, error) {
 
 	unsupported_err := fmt.Errorf("unsupported pattern: %q", pattern)
@@ -46,6 +44,7 @@ func matchLine(line []byte, pattern string) (bool, error) {
 	for ; !parser.AtEnd(); {
 		current_rune := parser.Advance()
 		switch current_rune {
+			case '^': funcs = append(funcs, Matchers.StartOfString); break;
 			case '\\':
 				switch {
 					case parser.Matches('d'): funcs = append(funcs, Matchers.Digit); break;
@@ -68,22 +67,21 @@ func matchLine(line []byte, pattern string) (bool, error) {
 		}
 	}
 
-	runes := []rune(string(line))
+	parser = NewParser(string(line))
 	funcs_count := len(funcs)
 
-	for i := 0; i + funcs_count <= len(runes); i++ {
+	for i := 0; i <= len(parser.contents); i++ {
 		ok := true
-		for j := 0; j < funcs_count; j++ {
-			if runes[i+j] == '\n' || runes[i+j] == 0 {
-				ok = false
+		parser.current = i
+		var j int
+		for j = 0; j < funcs_count; j++ {
+			ok, n := funcs[j](&parser)
+			if !ok {
 				break
 			}
-			if !funcs[j](runes[i+j]) {
-				ok = false
-				break
-			}
+			parser.current += n
 		}
-		if ok {
+		if ok && j == funcs_count {
 			return true, nil
 		}
 	}
