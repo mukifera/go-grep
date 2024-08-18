@@ -45,6 +45,7 @@ func matchLine(line []byte, pattern string) (bool, error) {
 		current_rune := parser.Advance()
 		switch current_rune {
 			case '^': funcs = append(funcs, Matchers.StartOfString); break;
+			case '$': funcs = append(funcs, Matchers.EndOfString); break;
 			case '\\':
 				switch {
 					case parser.Matches('d'): funcs = append(funcs, Matchers.Digit); break;

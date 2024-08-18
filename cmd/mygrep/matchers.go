@@ -65,3 +65,7 @@ func (matchersT) CharacterGroup(parser *Parser) (RuneMatcherFunc, error) {
 func (matchersT) StartOfString(p *Parser) (bool, int) {
 	return p.current == 0, 0
 }
+
+func (matchersT) EndOfString(p *Parser) (bool, int) {
+	return p.AtEnd() || p.Peek() == '\n', 0
+}
