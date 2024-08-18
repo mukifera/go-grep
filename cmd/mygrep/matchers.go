@@ -20,6 +20,13 @@ func NewMatcherState(rune_index int, matcher_node *MatcherNode) MatcherState {
 type MatcherNode struct {
 	matcher_func RuneMatcherFunc
 	next []*MatcherNode
+	prev []*MatcherNode
+}
+
+func NewMatcherNode(f RuneMatcherFunc) MatcherNode {
+	return MatcherNode{
+		matcher_func: f,
+	}
 }
 
 type MatcherList struct {
@@ -34,49 +41,68 @@ func NewMatcherList() MatcherList {
 	return list
 }
 
-func (list *MatcherList) AddNode(f RuneMatcherFunc) {
-	var node MatcherNode
-	node.matcher_func = f
+func (list *MatcherList) AppendNode(node *MatcherNode) {
 	if list.tail != nil {
-		list.tail.next = append(list.tail.next, &node)
+		list.Connect(list.tail, node)
 	}
-	list.tail = &node
+	list.tail = node
 	if list.head == nil {
 		list.head = list.tail
 	}
 }
 
-var Matchers matchersT
-
-func (matchersT) Letter(p *Parser) (bool, int) {
-	if p.AtEnd() { return false, 1 }
-	r := p.Peek()
-	if 'a' <= r && r <= 'z' { return true, 1; }
-	if 'A' <= r && r <= 'Z' { return true, 1; }
-	return false, 1
+func (list *MatcherList) Connect(from *MatcherNode, to *MatcherNode) {
+	from.next = append(from.next, to)
+	to.prev = append(to.prev, from)
 }
 
-func (matchersT) Digit(p *Parser) (bool, int) {
-	if p.AtEnd() { return false, 1 }
-	r := p.Peek()
-	return '0' <= r && r <= '9', 1
+type Matcher struct {
+	list *MatcherList
 }
 
-func (matchersT) Alpha(p *Parser) (bool, int) {
-	if ok, n := Matchers.Digit(p); ok { return ok, n; }
-	if ok, n := Matchers.Letter(p); ok { return ok, n; }
-	if p.AtEnd() { return false, 1 }
-	return p.Peek() == '_', 1
+func NewMatcher() Matcher {
+	var matcher Matcher
+	list := NewMatcherList()
+	matcher.list = &list
+	return matcher
 }
 
-func (matchersT) Literal(r rune) RuneMatcherFunc {
-	return func (p *Parser) (bool, int) {
+func (matcher *Matcher) AppendMatcher(f RuneMatcherFunc) {
+	node := NewMatcherNode(f)
+	matcher.list.AppendNode(&node)
+}
+
+func (matcher *Matcher) Letter() {
+	f := func (p *Parser) (bool, int) {
 		if p.AtEnd() { return false, 1 }
-		return r == p.Peek(), 1
+		return isLetter(p.Peek()), 1
 	}
+	matcher.AppendMatcher(f)
 }
 
-func (matchersT) CharacterGroup(parser *Parser) (RuneMatcherFunc, error) {
+func (matcher *Matcher) Digit() {
+	f := func (p *Parser) (bool, int) {
+		if p.AtEnd() { return false, 1 }
+		return isDigit(p.Peek()), 1
+	}
+	matcher.AppendMatcher(f)
+}
+
+func (matcher *Matcher) Alpha() {
+	f := func (p *Parser) (bool, int) {
+		if p.AtEnd() { return false, 1 }
+		r := p.Peek()
+		return isDigit(r) || isLetter(r) || r == '_', 1
+	}
+	matcher.AppendMatcher(f)
+}
+
+func (matcher *Matcher) Literal(r rune) {
+	f := literalMatcher(r)
+	matcher.AppendMatcher(f)
+}
+
+func (matcher *Matcher) CharacterGroup(parser *Parser) error {
 	var class_funcs []RuneMatcherFunc
 	positive := true
 	if parser.Matches('^') {
@@ -87,26 +113,61 @@ func (matchersT) CharacterGroup(parser *Parser) (RuneMatcherFunc, error) {
 			break
 		}
 		if parser.AtEnd() {
-			return nil, errors.New("error parsing character class")
+			return errors.New("error parsing character class")
 		}
-		class_funcs = append(class_funcs, Matchers.Literal(parser.Advance()))
+		class_funcs = append(class_funcs, literalMatcher(parser.Advance()))
 	}
 
-	matcher := func (p *Parser) (bool, int) {
+	f := func (p *Parser) (bool, int) {
 		if p.AtEnd() { return false, 1; }
 		for i := 0; i < len(class_funcs); i++ {
 			if ok, n := class_funcs[i](p); ok { return positive, n; }
 		}
 		return !positive, 1
 	}
-
-	return matcher, nil
+	matcher.AppendMatcher(f)
+	return nil
 }
 
-func (matchersT) StartOfString(p *Parser) (bool, int) {
-	return p.current == 0, 0
+func (matcher *Matcher) StartAnchor() {
+	f := func (p *Parser) (bool, int) {
+		return p.current == 0, 0
+	}
+	matcher.AppendMatcher(f)
 }
 
-func (matchersT) EndOfString(p *Parser) (bool, int) {
-	return p.AtEnd() || p.Peek() == '\n', 0
+func (matcher *Matcher) EndAnchor() {
+	f := func (p *Parser) (bool, int) {
+		return p.AtEnd() || p.Peek() == '\n', 0
+	}
+	matcher.AppendMatcher(f)
+}
+
+func (matcher *Matcher) OneOrMore() {
+	matcher.list.Connect(matcher.list.tail, matcher.list.tail)
+}
+
+func (matcher *Matcher) ZeroOrOne() {
+	node := NewMatcherNode(func (*Parser) (bool, int) { return true, 0; })
+	for _, prev := range(matcher.list.tail.prev) {
+		matcher.list.Connect(prev, &node)
+	}
+	matcher.list.AppendNode(&node)
+}
+
+func isLetter(r rune) bool {
+	if 'a' <= r && r <= 'z' { return true; }
+	if 'A' <= r && r <= 'Z' { return true; }
+	return false
+}
+
+func isDigit(r rune) bool {
+	return '0' <= r && r <= '9'
+}
+
+func literalMatcher(r rune) RuneMatcherFunc {
+	return func (p *Parser) (bool, int) {
+		if p.AtEnd() { return false, 1 }
+		return r == p.Peek(), 1
+	}
 }

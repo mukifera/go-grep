@@ -39,34 +39,31 @@ func matchLine(line []byte, pattern string) (bool, error) {
 	unsupported_err := fmt.Errorf("unsupported pattern: %q", pattern)
 	
 	parser := NewParser(pattern)
-	
-	matcher_list := NewMatcherList()
+	matcher := NewMatcher()
 
 	for ; !parser.AtEnd(); {
 		current_rune := parser.Advance()
 		switch current_rune {
-			case '^': matcher_list.AddNode(Matchers.StartOfString); break;
-			case '$': matcher_list.AddNode(Matchers.EndOfString); break;
-			case '+': matcher_list.tail.next = append(matcher_list.tail.next, matcher_list.tail)
+			case '^': matcher.StartAnchor(); break;
+			case '$': matcher.EndAnchor(); break;
+			case '+': matcher.OneOrMore(); break;
+			case '?': matcher.ZeroOrOne(); break;
 			case '\\':
 				switch {
-					case parser.Matches('d'): matcher_list.AddNode(Matchers.Digit); break;
-					case parser.Matches('w'): matcher_list.AddNode(Matchers.Alpha); break;
-					case parser.Matches('\\'): matcher_list.AddNode(Matchers.Literal('\\')); break;
+					case parser.Matches('d'): matcher.Digit(); break;
+					case parser.Matches('w'): matcher.Alpha(); break;
+					case parser.Matches('\\'): matcher.Literal('\\'); break;
 					default:
 						return false, unsupported_err
 				}
 				break
 			case '[':
-				matcher, err := Matchers.CharacterGroup(&parser)
+				err := matcher.CharacterGroup(&parser)
 				if err != nil {
 					return false, err
 				}
-				matcher_list.AddNode(matcher)
 				break
-			default:
-				matcher_list.AddNode(Matchers.Literal(current_rune))
-				break
+			default: matcher.Literal(current_rune); break;
 		}
 	}
 
@@ -75,7 +72,7 @@ func matchLine(line []byte, pattern string) (bool, error) {
 	for i := 0; i <= len(parser.contents); i++ {
 		matched := false
 		var states []MatcherState
-		states = append(states, NewMatcherState(i, matcher_list.head))
+		states = append(states, NewMatcherState(i, matcher.list.head))
 		for ; len(states) != 0;{
 			var new_states []MatcherState
 			for _, state := range(states) {
