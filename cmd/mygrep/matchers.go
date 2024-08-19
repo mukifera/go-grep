@@ -3,14 +3,11 @@ package main
 import "errors"
 
 type RuneMatcherFunc func (*Parser) (bool, int)
-type matchersT struct{}
 
 type MatcherState struct {
 	rune_index int
 	matcher_node *MatcherNode
 }
-
-type MatcherStates []MatcherState
 
 func NewMatcherState(rune_index int, matcher_node *MatcherNode) MatcherState {
 	return MatcherState{
