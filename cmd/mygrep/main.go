@@ -41,6 +41,7 @@ func matchLine(line []byte, pattern string) (bool, error) {
 	parser := NewParser(pattern)
 	matcher := NewMatcher()
 
+	matcher.Start()
 	for ; !parser.AtEnd(); {
 		current_rune := parser.Advance()
 		switch current_rune {
@@ -49,6 +50,9 @@ func matchLine(line []byte, pattern string) (bool, error) {
 			case '+': matcher.OneOrMore(); break;
 			case '?': matcher.ZeroOrOne(); break;
 			case '.': matcher.WildCard(); break;
+			case '|': matcher.Alternate(); break;
+			case '(': matcher.StartGroup(); break;
+			case ')': matcher.CloseGroup(); break;
 			case '\\':
 				switch {
 					case parser.Matches('d'): matcher.Digit(); break;
@@ -67,6 +71,7 @@ func matchLine(line []byte, pattern string) (bool, error) {
 			default: matcher.Literal(current_rune); break;
 		}
 	}
+	matcher.End()
 
 	parser = NewParser(string(line))
 	

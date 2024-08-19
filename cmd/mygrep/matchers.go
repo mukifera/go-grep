@@ -10,6 +10,8 @@ type MatcherState struct {
 	matcher_node *MatcherNode
 }
 
+type MatcherStates []MatcherState
+
 func NewMatcherState(rune_index int, matcher_node *MatcherNode) MatcherState {
 	return MatcherState{
 		rune_index: rune_index,
@@ -20,12 +22,14 @@ func NewMatcherState(rune_index int, matcher_node *MatcherNode) MatcherState {
 type MatcherNode struct {
 	matcher_func RuneMatcherFunc
 	next []*MatcherNode
-	prev []*MatcherNode
+	prev *MatcherNode
+	is_sink bool
 }
 
 func NewMatcherNode(f RuneMatcherFunc) MatcherNode {
 	return MatcherNode{
 		matcher_func: f,
+		is_sink: false,
 	}
 }
 
@@ -43,7 +47,8 @@ func NewMatcherList() MatcherList {
 
 func (list *MatcherList) AppendNode(node *MatcherNode) {
 	if list.tail != nil {
-		list.Connect(list.tail, node)
+		list.tail.next = append(list.tail.next, node)
+		node.prev = list.tail
 	}
 	list.tail = node
 	if list.head == nil {
@@ -51,13 +56,10 @@ func (list *MatcherList) AppendNode(node *MatcherNode) {
 	}
 }
 
-func (list *MatcherList) Connect(from *MatcherNode, to *MatcherNode) {
-	from.next = append(from.next, to)
-	to.prev = append(to.prev, from)
-}
-
 type Matcher struct {
 	list *MatcherList
+	group_heads []*MatcherNode
+	group_sinks []*MatcherNode
 }
 
 func NewMatcher() Matcher {
@@ -65,6 +67,34 @@ func NewMatcher() Matcher {
 	list := NewMatcherList()
 	matcher.list = &list
 	return matcher
+}
+
+func (matcher *Matcher) Start() {
+	matcher.StartGroup()
+}
+
+func (matcher *Matcher) End() {
+	matcher.CloseGroup()
+}
+
+func (matcher *Matcher) StartGroup() {
+	f := func (*Parser) (bool, int) {
+		return true, 0
+	}
+	head := NewMatcherNode(f)
+	sink := NewMatcherNode(f)
+	sink.is_sink = true
+	sink.prev = &head
+	matcher.group_heads = append(matcher.group_heads, &head)
+	matcher.group_sinks = append(matcher.group_sinks, &sink)
+	matcher.list.AppendNode(&head)
+}
+
+func (matcher *Matcher) CloseGroup() {
+	group_i := len(matcher.group_heads) - 1
+	matcher.list.AppendNode(matcher.group_sinks[group_i])
+	matcher.group_heads = matcher.group_heads[:group_i]
+	matcher.group_sinks = matcher.group_sinks[:group_i]
 }
 
 func (matcher *Matcher) AppendMatcher(f RuneMatcherFunc) {
@@ -144,14 +174,18 @@ func (matcher *Matcher) EndAnchor() {
 }
 
 func (matcher *Matcher) OneOrMore() {
-	matcher.list.Connect(matcher.list.tail, matcher.list.tail)
+	tail := matcher.list.tail
+	if tail.is_sink {
+		tail.next = append(tail.next, tail.prev)
+	} else {
+		tail.next = append(tail.next, tail)
+	}
 }
 
 func (matcher *Matcher) ZeroOrOne() {
 	node := NewMatcherNode(func (*Parser) (bool, int) { return true, 0; })
-	for _, prev := range(matcher.list.tail.prev) {
-		matcher.list.Connect(prev, &node)
-	}
+	node.prev = matcher.list.tail.prev
+	matcher.list.tail.prev.next = append(matcher.list.tail.prev.next, &node)
 	matcher.list.AppendNode(&node)
 }
 
@@ -160,6 +194,12 @@ func (matcher *Matcher) WildCard() {
 		return !p.AtEnd() && p.Peek() != '\n', 1
 	}
 	matcher.AppendMatcher(f)
+}
+
+func (matcher *Matcher) Alternate() {
+	group_i := len(matcher.group_heads) - 1
+	matcher.list.tail.next = append(matcher.list.tail.next, matcher.group_sinks[group_i])
+	matcher.list.tail = matcher.group_heads[group_i]
 }
 
 func isLetter(r rune) bool {
