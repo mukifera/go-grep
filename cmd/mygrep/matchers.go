@@ -6,23 +6,28 @@ type RuneMatcherFunc func (*Parser, *MatcherState) (bool, int)
 
 type MatcherState struct {
 	rune_current int
+	match_groups int
 	matched_starts []int
 	matched_ends []int
+	unmatched_starts []int
 	matcher_node *MatcherNode
 }
 
 func NewMatcherState(rune_current int, matcher_node *MatcherNode) MatcherState {
 	return MatcherState{
 		rune_current: rune_current,
+		match_groups: 0,
 		matcher_node: matcher_node,
 	}
 }
 
 func CopyMatcherState(state *MatcherState) MatcherState {
-	copiedState := NewMatcherState(state.rune_current, state.matcher_node)
-	copiedState.matched_starts = append(copiedState.matched_starts, state.matched_starts...)
-	copiedState.matched_ends = append(copiedState.matched_ends, state.matched_ends...)
-	return copiedState
+	copied_state := NewMatcherState(state.rune_current, state.matcher_node)
+	copied_state.match_groups = state.match_groups
+	copied_state.matched_starts = append(copied_state.matched_starts, state.matched_starts...)
+	copied_state.matched_ends = append(copied_state.matched_ends, state.matched_ends...)
+	copied_state.unmatched_starts = append(copied_state.unmatched_starts, state.unmatched_starts...)
+	return copied_state
 }
 
 type MatcherNode struct {
@@ -261,9 +266,15 @@ func (matcher *Matcher) MatchLine(line []byte) bool {
 					new_state.rune_current += n
 					if state.matcher_node.is_capturing {
 						if state.matcher_node.is_sink {
-							new_state.matched_ends = append(new_state.matched_ends, state.rune_current)
+							length := len(state.unmatched_starts)
+							group_i := state.unmatched_starts[length-1]
+							new_state.unmatched_starts = state.unmatched_starts[:length-1]
+							new_state.matched_ends[group_i] = state.rune_current
 						} else {
 							new_state.matched_starts = append(new_state.matched_starts, state.rune_current)
+							new_state.matched_ends = append(new_state.matched_ends, state.rune_current)
+							new_state.unmatched_starts = append(new_state.unmatched_starts, new_state.match_groups)
+							new_state.match_groups = state.match_groups + 1
 						}
 					}
 					for _, next := range(state.matcher_node.next) {
