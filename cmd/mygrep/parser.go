@@ -23,6 +23,13 @@ func (p *Parser) Peek() rune {
 	return p.contents[p.current]
 }
 
+func (p *Parser) Seek(index int) rune {
+	if index >= len(p.contents) {
+		return 0
+	}
+	return p.contents[index]
+}
+
 func (p *Parser) Matches(r rune) bool {
 	if p.Peek() == r {
 		p.Advance()

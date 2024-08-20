@@ -2,18 +2,27 @@ package main
 
 import "errors"
 
-type RuneMatcherFunc func (*Parser) (bool, int)
+type RuneMatcherFunc func (*Parser, *MatcherState) (bool, int)
 
 type MatcherState struct {
-	rune_index int
+	rune_current int
+	matched_starts []int
+	matched_ends []int
 	matcher_node *MatcherNode
 }
 
-func NewMatcherState(rune_index int, matcher_node *MatcherNode) MatcherState {
+func NewMatcherState(rune_current int, matcher_node *MatcherNode) MatcherState {
 	return MatcherState{
-		rune_index: rune_index,
+		rune_current: rune_current,
 		matcher_node: matcher_node,
 	}
+}
+
+func CopyMatcherState(state *MatcherState) MatcherState {
+	copiedState := NewMatcherState(state.rune_current, state.matcher_node)
+	copiedState.matched_starts = append(copiedState.matched_starts, state.matched_starts...)
+	copiedState.matched_ends = append(copiedState.matched_ends, state.matched_ends...)
+	return copiedState
 }
 
 type MatcherNode struct {
@@ -21,12 +30,14 @@ type MatcherNode struct {
 	next []*MatcherNode
 	prev *MatcherNode
 	is_sink bool
+	is_capturing bool
 }
 
 func NewMatcherNode(f RuneMatcherFunc) MatcherNode {
 	return MatcherNode{
 		matcher_func: f,
 		is_sink: false,
+		is_capturing: false,
 	}
 }
 
@@ -75,7 +86,7 @@ func (matcher *Matcher) End() {
 }
 
 func (matcher *Matcher) StartGroup() {
-	f := func (*Parser) (bool, int) {
+	f := func (*Parser, *MatcherState) (bool, int) {
 		return true, 0
 	}
 	head := NewMatcherNode(f)
@@ -100,26 +111,26 @@ func (matcher *Matcher) AppendMatcher(f RuneMatcherFunc) {
 }
 
 func (matcher *Matcher) Letter() {
-	f := func (p *Parser) (bool, int) {
+	f := func (p *Parser, _ *MatcherState) (bool, int) {
 		if p.AtEnd() { return false, 1 }
-		return isLetter(p.Peek()), 1
+		return IsLetter(p.Peek()), 1
 	}
 	matcher.AppendMatcher(f)
 }
 
 func (matcher *Matcher) Digit() {
-	f := func (p *Parser) (bool, int) {
+	f := func (p *Parser, _ *MatcherState) (bool, int) {
 		if p.AtEnd() { return false, 1 }
-		return isDigit(p.Peek()), 1
+		return IsDigit(p.Peek()), 1
 	}
 	matcher.AppendMatcher(f)
 }
 
 func (matcher *Matcher) Alpha() {
-	f := func (p *Parser) (bool, int) {
+	f := func (p *Parser, _ *MatcherState) (bool, int) {
 		if p.AtEnd() { return false, 1 }
 		r := p.Peek()
-		return isDigit(r) || isLetter(r) || r == '_', 1
+		return IsDigit(r) || IsLetter(r) || r == '_', 1
 	}
 	matcher.AppendMatcher(f)
 }
@@ -145,10 +156,10 @@ func (matcher *Matcher) CharacterGroup(parser *Parser) error {
 		class_funcs = append(class_funcs, literalMatcher(parser.Advance()))
 	}
 
-	f := func (p *Parser) (bool, int) {
+	f := func (p *Parser, s *MatcherState) (bool, int) {
 		if p.AtEnd() { return false, 1; }
 		for i := 0; i < len(class_funcs); i++ {
-			if ok, n := class_funcs[i](p); ok { return positive, n; }
+			if ok, n := class_funcs[i](p, s); ok { return positive, n; }
 		}
 		return !positive, 1
 	}
@@ -157,14 +168,14 @@ func (matcher *Matcher) CharacterGroup(parser *Parser) error {
 }
 
 func (matcher *Matcher) StartAnchor() {
-	f := func (p *Parser) (bool, int) {
+	f := func (p *Parser, _ *MatcherState) (bool, int) {
 		return p.current == 0, 0
 	}
 	matcher.AppendMatcher(f)
 }
 
 func (matcher *Matcher) EndAnchor() {
-	f := func (p *Parser) (bool, int) {
+	f := func (p *Parser, _ *MatcherState) (bool, int) {
 		return p.AtEnd() || p.Peek() == '\n', 0
 	}
 	matcher.AppendMatcher(f)
@@ -180,14 +191,14 @@ func (matcher *Matcher) OneOrMore() {
 }
 
 func (matcher *Matcher) ZeroOrOne() {
-	node := NewMatcherNode(func (*Parser) (bool, int) { return true, 0; })
+	node := NewMatcherNode(func (*Parser, *MatcherState) (bool, int) { return true, 0; })
 	node.prev = matcher.list.tail.prev
 	matcher.list.tail.prev.next = append(matcher.list.tail.prev.next, &node)
 	matcher.list.AppendNode(&node)
 }
 
 func (matcher *Matcher) WildCard() {
-	f := func (p *Parser) (bool, int) {
+	f := func (p *Parser, _ *MatcherState) (bool, int) {
 		return !p.AtEnd() && p.Peek() != '\n', 1
 	}
 	matcher.AppendMatcher(f)
@@ -199,18 +210,94 @@ func (matcher *Matcher) Alternate() {
 	matcher.list.tail = matcher.group_heads[group_i]
 }
 
-func isLetter(r rune) bool {
+func (matcher *Matcher) Backreference(group_i int) {
+	group_i -= 1
+	f := func (p *Parser, s *MatcherState) (bool, int) {
+		if group_i >= len(s.matched_starts) || group_i >= len(s.matched_ends) {
+			return false, 0
+		}
+		start := s.matched_starts[group_i]
+		end := s.matched_ends[group_i]
+		length := end - start
+		for i := 0; i < length; i++ {
+			if p.Seek(p.current + i) != p.Seek(start + i) {
+				return false, 0
+			}
+		}
+		return true, length
+	}
+	matcher.AppendMatcher(f)
+}
+
+func (matcher *Matcher) StartCapturingGroup() {
+	matcher.StartGroup()
+	group_i := len(matcher.group_sinks) - 1
+	matcher.group_heads[group_i].is_capturing = true
+	matcher.group_sinks[group_i].is_capturing = true
+}
+
+func (matcher *Matcher) CloseCapturingGroup() {
+	matcher.CloseGroup()
+}
+
+func (matcher *Matcher) MatchLine(line []byte) bool {
+
+	parser := NewParser(string(line))
+	
+	for i := 0; i <= len(parser.contents); i++ {
+		matched := false
+		states := []MatcherState{ NewMatcherState(i, matcher.list.head) } 
+		for ; len(states) != 0;{
+			var new_states []MatcherState
+			for _, state := range(states) {
+				parser.current = state.rune_current
+				ok, n := state.matcher_node.matcher_func(&parser, &state)
+				if ok {
+					if len(state.matcher_node.next) == 0 {
+						matched = true
+						break
+					}
+					new_state := CopyMatcherState(&state)
+					new_state.rune_current += n
+					if state.matcher_node.is_capturing {
+						if state.matcher_node.is_sink {
+							new_state.matched_ends = append(new_state.matched_ends, state.rune_current)
+						} else {
+							new_state.matched_starts = append(new_state.matched_starts, state.rune_current)
+						}
+					}
+					for _, next := range(state.matcher_node.next) {
+						copy := CopyMatcherState(&new_state)
+						copy.matcher_node = next
+						new_states = append(new_states, copy)
+					}
+					parser.current += n
+				}
+			}
+			if matched {
+				break
+			}
+			states = new_states
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
+func IsLetter(r rune) bool {
 	if 'a' <= r && r <= 'z' { return true; }
 	if 'A' <= r && r <= 'Z' { return true; }
 	return false
 }
 
-func isDigit(r rune) bool {
+func IsDigit(r rune) bool {
 	return '0' <= r && r <= '9'
 }
 
 func literalMatcher(r rune) RuneMatcherFunc {
-	return func (p *Parser) (bool, int) {
+	return func (p *Parser, _ *MatcherState) (bool, int) {
 		if p.AtEnd() { return false, 1 }
 		return r == p.Peek(), 1
 	}

@@ -51,13 +51,17 @@ func matchLine(line []byte, pattern string) (bool, error) {
 			case '?': matcher.ZeroOrOne(); break;
 			case '.': matcher.WildCard(); break;
 			case '|': matcher.Alternate(); break;
-			case '(': matcher.StartGroup(); break;
-			case ')': matcher.CloseGroup(); break;
+			case '(': matcher.StartCapturingGroup(); break;
+			case ')': matcher.CloseCapturingGroup(); break;
 			case '\\':
 				switch {
 					case parser.Matches('d'): matcher.Digit(); break;
 					case parser.Matches('w'): matcher.Alpha(); break;
 					case parser.Matches('\\'): matcher.Literal('\\'); break;
+					case IsDigit(parser.Peek()):
+						matcher.Backreference(int(parser.Peek() - '0'))
+						parser.Advance()
+						break
 					default:
 						return false, unsupported_err
 				}
@@ -73,36 +77,5 @@ func matchLine(line []byte, pattern string) (bool, error) {
 	}
 	matcher.End()
 
-	parser = NewParser(string(line))
-	
-	for i := 0; i <= len(parser.contents); i++ {
-		matched := false
-		var states []MatcherState
-		states = append(states, NewMatcherState(i, matcher.list.head))
-		for ; len(states) != 0;{
-			var new_states []MatcherState
-			for _, state := range(states) {
-				parser.current = state.rune_index
-				ok, n := state.matcher_node.matcher_func(&parser)
-				if ok {
-					if len(state.matcher_node.next) == 0 {
-						matched = true
-						break
-					}
-					for _, next := range(state.matcher_node.next) {
-						new_states = append(new_states, NewMatcherState(state.rune_index + n, next))
-					}
-				}
-			}
-			if matched {
-				break
-			}
-			states = new_states
-		}
-		if matched {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return matcher.MatchLine(line), nil
 }
