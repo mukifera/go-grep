@@ -1,39 +1,32 @@
-[![progress-banner](https://backend.codecrafters.io/progress/grep/1b2016c1-9dda-4023-8b5e-b6f74b111b85)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+A regex matcher written in Go. Functionality is a subset of [`grep`](https://en.wikipedia.org/wiki/Grep)
 
-This is a starting point for Go solutions to the
-["Build Your Own grep" Challenge](https://app.codecrafters.io/courses/grep/overview).
+## How to run
 
-[Regular expressions](https://en.wikipedia.org/wiki/Regular_expression)
-(Regexes, for short) are patterns used to match character combinations in
-strings. [`grep`](https://en.wikipedia.org/wiki/Grep) is a CLI tool for
-searching using Regexes.
+Use the `grep-go.sh` script to build and run the matcher. The command will exit with code 0 on a successful match, and exit code 1 otherwise.
 
-In this challenge you'll build your own implementation of `grep`. Along the way
-we'll learn about Regex syntax, how parsers/lexers work, and how regular
-expressions are evaluated.
-
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
-
-# Passing the first stage
-
-The entry point for your `grep` implementation is in `cmd/mygrep/main.go`. Study
-and uncomment the relevant code, and push your changes to pass the first stage:
-
+### Usage
 ```sh
-git add .
-git commit -m "pass 1st stage" # any msg
-git push origin master
+echo -n [text] | ./grep-go.sh -E [regex]
 ```
 
-Time to move on to the next stage!
+### Example
+```sh
+echo -n "abcd" | ./grep-go.sh -E "ab"
+```
+would exit with code 0.
+```sh
+echo -n "abcd" | ./grep-go.sh -E "z"
+```
+would exit with code 1.
 
-# Stage 2 & beyond
-
-Note: This section is for stages 2 and beyond.
-
-1. Ensure you have `go (1.19)` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `cmd/mygrep/main.go`.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+## Supported syntax
+- Character literals
+- Digit class `\d` and the alphanumeric class `\w`
+- Positive character groups `[abc]`
+- Negative character groups `[^abc]`
+- Start of string anchor `^`, and end of string anchor `$`
+- One or more quantifier `+`
+- Zero or one quantifier `?`
+- Wild card `.`
+- Alternation to combine multiple patterns `(abc|def)`
+- Backreferences up to 9 groups, with nesting allowed `(\w+) and \1` 
