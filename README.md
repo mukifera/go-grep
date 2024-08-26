@@ -11,13 +11,9 @@ echo -n [text] | ./grep-go.sh -E [regex]
 
 ### Example
 ```sh
-echo -n "abcd" | ./grep-go.sh -E "ab"
+echo -n "abcd" | ./grep-go.sh -E "ab" # exits with code 0
+echo -n "abcd" | ./grep-go.sh -E "z" # exits with code 1
 ```
-would exit with code 0.
-```sh
-echo -n "abcd" | ./grep-go.sh -E "z"
-```
-would exit with code 1.
 
 ## Supported syntax
 - Character literals
